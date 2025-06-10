@@ -44,7 +44,8 @@ export default defineConfig({
       'tweetnacl',
       'snarkjs',
       'buffer',
-      'process'
+      'process',
+      'idb'
     ],
     exclude: ['@vite/client', '@vite/env']
   },

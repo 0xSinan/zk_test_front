@@ -57,6 +57,7 @@
     "date-fns": "^2.30.0",
     "elliptic": "^6.5.4",
     "ethers": "^6.8.0",
+    "idb": "^8.0.3",
     "lucide-svelte": "^0.290.0",
     "poseidon-lite": "^0.2.0",
     "snarkjs": "^0.7.0",

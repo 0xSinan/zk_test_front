@@ -210,19 +210,29 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
       throw new Error(`Wrong network. Please switch to chain ${CONSTANTS.CHAIN_ID}`);
     }
     
+    // Check contract deployment (skip in dev mode if needed)
+    const { DEV_FLAGS } = await import('../config/constants.js');
+    if (DEV_FLAGS.SKIP_SIGNATURE_VERIFICATION) {
+      console.log('⚠️ Skipping contract verification in development mode');
+      return;
+    }
+    
     // Check contract deployment
     const { getContract } = await import('../contracts/index.js');
     const contracts = ['TradePrivate', 'ZKVerifierManager', 'USDC'];
     for (const name of contracts) {
       try {
         const contract = await getContract(name);
-        const code = await contract.runner.provider.getCode(await contract.getAddress());
+        const address = await contract.getAddress();
+        const code = await contract.runner.provider.getCode(address);
+        console.log(`Verifying ${name} contract at ${address}...`);
         if (code === '0x') {
-          throw new Error(`${name} contract not deployed`);
+          throw new Error(`${name} contract not deployed at ${address}`);
         }
+        console.log(`✅ ${name} contract verified`);
       } catch (error) {
         console.error(`Failed to verify ${name} contract:`, error);
-        throw new Error(`Cannot verify ${name} contract deployment`);
+        throw new Error(`Cannot verify ${name} contract deployment: ${error.message}`);
       }
     }
   }
