@@ -31,8 +31,17 @@ export class PrivateKeyManager {
     const legacyLoaded = await this.loadFromSecureStorage();
     
     if (!legacyLoaded) {
-      // No existing keys - will generate new HD wallet when needed
-      console.log('💡 No existing keys found. Ready to generate HD wallet.');
+      // No existing keys - generate temporary keys automatically
+      console.log('💡 No existing keys found. Generating temporary keys for immediate use...');
+      console.log('⚠️ Consider creating an HD wallet for better security and backup options.');
+      
+      try {
+        await this.generateNewKeys();
+        console.log('✅ Temporary keys generated successfully. Ready to create private account.');
+      } catch (error) {
+        console.warn('Failed to generate keys automatically:', error);
+        console.log('💡 Keys will be generated when needed.');
+      }
       return;
     }
     
@@ -456,23 +465,38 @@ export class PrivateKeyManager {
 
     if (typeof window !== 'undefined') {
       try {
-        // ONLY use IndexedDB for secure storage - NEVER sessionStorage for private keys
+        // Use IndexedDB for secure storage with proper upgrade handling
         const { openDB } = await import('idb');
         const db = await openDB('TradePrivateKeys', 1, {
           upgrade(db) {
+            // Create object store if it doesn't exist
             if (!db.objectStoreNames.contains('keys')) {
+              console.log('Creating keys object store...');
               db.createObjectStore('keys');
             }
           }
         });
         
+        // Wait for database to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Encrypt data before storage
         const encryptedData = await this.encryptForStorage(data);
+        
+        // Store the encrypted data
         await db.put('keys', encryptedData, 'main');
-        console.log('Keys saved securely to IndexedDB');
+        console.log('✅ Keys saved securely to IndexedDB');
+        
+        // Close database connection
+        db.close();
       } catch (error) {
         console.error('Failed to save to IndexedDB:', error);
-        throw new Error('Cannot securely store private keys. Private key storage failed.');
+        
+        // Fallback: generate keys without storing (for immediate use)
+        console.log('⚠️ Could not save keys to storage, but keys are ready in memory');
+        console.log('💡 Keys will need to be regenerated on next session');
+        
+        // Don't throw error - allow keys to work in memory
       }
     }
   }

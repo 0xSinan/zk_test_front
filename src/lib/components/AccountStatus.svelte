@@ -10,6 +10,7 @@
     showToast,
     showError
   } from '$lib/stores';
+  import { CONSTANTS } from '$lib/config/constants.js';
   
   let blocksRemaining = 0;
   let canReveal = false;
@@ -24,10 +25,23 @@
     try {
       const provider = await $sdk.checkNetwork();
       const currentBlock = await provider.blockNumber;
-      blocksRemaining = Math.max(0, 240 - (currentBlock - $pendingCommit.blockNumber));
-      canReveal = blocksRemaining === 0;
+      
+      // If COMMIT_REVEAL_DELAY is 0, reveal immediately
+      if (CONSTANTS.COMMIT_REVEAL_DELAY === 0) {
+        blocksRemaining = 0;
+        canReveal = true;
+      } else {
+        const blocksPassed = currentBlock - $pendingCommit.blockNumber;
+        blocksRemaining = Math.max(0, CONSTANTS.COMMIT_REVEAL_DELAY - blocksPassed);
+        canReveal = blocksRemaining === 0;
+      }
     } catch (error) {
       console.error('Failed to get block number:', error);
+      // If there's an error and delay is 0, allow reveal anyway
+      if (CONSTANTS.COMMIT_REVEAL_DELAY === 0) {
+        blocksRemaining = 0;
+        canReveal = true;
+      }
     }
   }
   
@@ -72,6 +86,21 @@
     }
   }
   
+  function clearPendingCommit() {
+    pendingCommit.set(null);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('pendingCommit');
+      // Also clear IndexedDB if it exists
+      try {
+        indexedDB.deleteDatabase('TradePrivate');
+        console.log('Cleared IndexedDB storage');
+      } catch (error) {
+        console.warn('Could not clear IndexedDB:', error);
+      }
+    }
+    showToast('Pending commit and storage cleared', 'info');
+  }
+  
   onMount(() => {
     const interval = setInterval(updateBlocksRemaining, 12000); // Every ~12 seconds
     return () => clearInterval(interval);
@@ -95,13 +124,23 @@
     </div>
   {:else if $pendingCommit}
     <div class="status-pending">
-      <h3>⏳ Account Creation Pending</h3>
+      <h3>
+        {#if CONSTANTS.COMMIT_REVEAL_DELAY === 0 || canReveal}
+          ✅ Ready to Reveal Account
+        {:else}
+          ⏳ Account Creation Pending
+        {/if}
+      </h3>
       <div class="pending-details">
-        <p>Blocks remaining: <strong>{blocksRemaining}</strong></p>
+        {#if CONSTANTS.COMMIT_REVEAL_DELAY === 0}
+          <p><strong>Ready to reveal immediately!</strong></p>
+        {:else}
+          <p>Blocks remaining: <strong>{blocksRemaining}</strong></p>
+        {/if}
         <div class="progress-bar">
           <div 
             class="progress-fill" 
-            style="width: {((240 - blocksRemaining) / 240) * 100}%"
+            style="width: {CONSTANTS.COMMIT_REVEAL_DELAY === 0 ? 100 : ((CONSTANTS.COMMIT_REVEAL_DELAY - blocksRemaining) / CONSTANTS.COMMIT_REVEAL_DELAY) * 100}%"
           ></div>
         </div>
         <button 
@@ -118,6 +157,19 @@
             Wait {blocksRemaining} blocks
           {/if}
         </button>
+        
+        {#if CONSTANTS.COMMIT_REVEAL_DELAY === 0 || canReveal}
+          <button 
+            class="btn btn-secondary"
+            on:click={clearPendingCommit}
+            disabled={$isCreatingAccount}
+          >
+            Clear Pending Commit
+          </button>
+          <small class="help-text">
+            💡 If you get "Invalid committer" error, clear the pending commit and create a new account.
+          </small>
+        {/if}
       </div>
     </div>
   {:else}
@@ -208,5 +260,12 @@
     align-items: center;
     justify-content: center;
     gap: var(--spacing-sm);
+  }
+  
+  .help-text {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    text-align: center;
+    margin-top: var(--spacing-xs);
   }
 </style> 

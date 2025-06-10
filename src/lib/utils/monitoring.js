@@ -1,5 +1,12 @@
 import { CONSTANTS } from '../config/constants.js';
 
+// Store original console methods to avoid interference with console monitoring
+const originalConsole = {
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console)
+};
+
 export class TradePrivateMonitoring {
   static events = [];
   static metrics = {
@@ -37,9 +44,9 @@ export class TradePrivateMonitoring {
       this.events = this.events.slice(-1000);
     }
 
-    // Log to console in development
+    // Log to console in development using original console method
     if (import.meta.env.DEV) {
-      console.log(`[TradePrivate] ${type}:`, data);
+      originalConsole.log(`[TradePrivate] ${type}:`, data);
     }
   }
 
@@ -52,9 +59,9 @@ export class TradePrivateMonitoring {
 
     this.logEvent('proof_generation', { type, duration });
 
-    // Alert if generation is slow
+    // Alert if generation is slow using original console
     if (duration > 5000) {
-      console.warn(`Slow proof generation: ${type} took ${duration}ms`);
+      originalConsole.warn(`Slow proof generation: ${type} took ${duration}ms`);
       this.logEvent('slow_proof_generation', { type, duration });
     }
   }
@@ -78,9 +85,9 @@ export class TradePrivateMonitoring {
       this.metrics.networkErrors++;
     }
 
-    // Alert on high failure rate
+    // Alert on high failure rate using original console
     if (this.metrics.transactionFailures % 5 === 0) {
-      console.error('High transaction failure rate detected:', this.metrics.transactionFailures);
+      originalConsole.error('High transaction failure rate detected:', this.metrics.transactionFailures);
     }
   }
 

@@ -1,4 +1,5 @@
 import { FieldElement } from './fieldElement.js';
+import { keccak256 } from 'js-sha3';
 
 /**
  * Commitment Generator for TradePrivate
@@ -43,21 +44,31 @@ export class CommitmentGenerator {
 
   /**
    * Generate commit hash for commit-reveal scheme
-   * commitHash = hash(commitment, nonce, address)
+   * commitHash = keccak256(commitment, nonce, address) - must match Solidity contract
    */
   static generateCommitHash(commitment, nonce, address) {
-    const commitElement = commitment instanceof FieldElement ? commitment : new FieldElement(commitment);
-    const nonceElement = nonce instanceof FieldElement ? nonce : new FieldElement(nonce);
-    const addressElement = this.addressToFieldElement(address);
+    // Convert commitment to bytes32 (remove 0x prefix if present)
+    const commitmentHex = commitment instanceof FieldElement ? commitment.toHex().slice(2) : commitment.toString(16).padStart(64, '0');
     
-    // Combine all elements
-    const combined = commitElement
-      .add(nonceElement.mul(new FieldElement(2n)))
-      .add(addressElement.mul(new FieldElement(3n)));
+    // Convert nonce to bytes32  
+    const nonceHex = typeof nonce === 'bigint' ? nonce.toString(16).padStart(64, '0') : BigInt(nonce).toString(16).padStart(64, '0');
     
-    return combined.toHex();
+    // Convert address to bytes (remove 0x prefix)
+    const addressHex = address.startsWith('0x') ? address.slice(2) : address;
+    
+    // Concatenate all parameters as hex (this matches abi.encodePacked in Solidity)
+    const packedHex = commitmentHex + nonceHex + addressHex.padStart(40, '0');
+    
+    // Convert hex to bytes for keccak256
+    const bytes = new Uint8Array(packedHex.length / 2);
+    for (let i = 0; i < packedHex.length; i += 2) {
+      bytes[i / 2] = parseInt(packedHex.slice(i, i + 2), 16);
+    }
+    
+    // Use proper keccak256 (matches Solidity)
+    return '0x' + keccak256(bytes);
   }
-
+  
   /**
    * Serialize order data for hashing
    */

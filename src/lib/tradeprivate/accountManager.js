@@ -47,6 +47,17 @@ export class PrivateAccountManager {
         throw new Error('Must have balance to create private account');
       }
 
+      // Ensure we have a private key before proceeding
+      if (!this.keyManager.privateKey) {
+        console.log('🔑 No private key found, generating temporary keys...');
+        try {
+          await this.keyManager.generateNewKeys();
+          console.log('✅ Keys generated successfully');
+        } catch (error) {
+          throw new Error(`Failed to generate required keys: ${error.message}`);
+        }
+      }
+
       // Step 1: Generate commitment
       const nonce = this.generateSecureNonce();
       const commitment = CommitmentGenerator.generateAccountCommitment(

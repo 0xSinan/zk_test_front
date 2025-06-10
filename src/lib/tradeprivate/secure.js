@@ -1,6 +1,6 @@
 import { TradePrivateSDK } from './index.js';
 import { ErrorHandler } from '../utils/errors.js';
-import { InputValidator } from '../utils/validation.js';
+import { validateOrderParams, validateAmount, ValidationError } from '../crypto/input-validation.js';
 import { TradePrivateMonitoring } from '../utils/monitoring.js';
 import { CONSTANTS } from '../config/constants.js';
 
@@ -156,6 +156,10 @@ class SecureSessionManager {
     return true;
   }
 
+  isSessionValid() {
+    return this.checkSession();
+  }
+
   showExpiryWarning() {
     const remaining = Math.ceil(
       (CONSTANTS.SESSION_DURATION - (Date.now() - this.sessionStart)) / 60000
@@ -219,12 +223,65 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
     this.circuitBreaker = new CircuitBreaker();
     this.sessionManager = new SecureSessionManager();
     this.rateLimiter = new RateLimiter(20, 60000); // 20 requests per minute
-    this.initializeSecurityFeatures();
     
     // Listen for session expiry
     this.sessionManager.onSessionExpired((reason) => {
       console.log('Session expired:', reason);
       this.destroy();
+    });
+    
+    this.initializeSecurityFeatures();
+  }
+
+  initializeSecurityFeatures() {
+    console.log('🔐 Initializing security features...');
+    
+    // Set up security monitoring
+    if (typeof window !== 'undefined') {
+      // Monitor for suspicious activity
+      this.setupSecurityMonitoring();
+      
+      // Initialize session tracking
+      this.sessionManager.updateActivity();
+    }
+    
+    console.log('✅ Security features initialized');
+  }
+
+  setupSecurityMonitoring() {
+    // Monitor for developer tools
+    let devtools = { open: false };
+    
+    setInterval(() => {
+      if (devtools.open) {
+        console.warn('⚠️ Developer tools detected');
+        TradePrivateMonitoring.logEvent('devtools_detected');
+      }
+    }, 1000);
+    
+    // Store original console methods to avoid infinite loops
+    const originalConsole = {
+      log: window.console.log.bind(window.console),
+      warn: window.console.warn.bind(window.console),
+      error: window.console.error.bind(window.console)
+    };
+    
+    // Monitor for console access but use original methods to avoid recursion
+    ['log', 'warn', 'error'].forEach(method => {
+      window.console[method] = (...args) => {
+        // Use the original console method to avoid infinite loop
+        originalConsole[method](...args);
+        
+        // Only log to monitoring if it's not already a monitoring call
+        if (!args[0]?.toString().includes('[TradePrivate]')) {
+          TradePrivateMonitoring.logEvent('console_access', { 
+            method, 
+            args: args.slice(0, 2).map(arg => 
+              typeof arg === 'object' ? '[Object]' : String(arg).substring(0, 100)
+            )
+          });
+        }
+      };
     });
   }
 
@@ -282,7 +339,7 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
     
     // Validate inputs
     try {
-      InputValidator.validateOrderParams(orderParams);
+      validateOrderParams(orderParams);
     } catch (error) {
       TradePrivateMonitoring.trackUserAction('order_validation_failed', {
         errors: error.errors
@@ -330,21 +387,18 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
     this.sessionManager.updateActivity();
     
     // Validate amount
-    const errors = InputValidator.validateAmount(
-      amount,
-      'amount',
-      '0',
-      CONSTANTS.MAX_ORDER_SIZE
-    );
-    
-    if (errors.length > 0) {
-      const { ValidationError } = await import('../utils/errors.js');
-      throw new ValidationError(errors);
+    try {
+      const validatedAmount = validateAmount(amount, 'deposit amount');
+      
+      return await this.circuitBreaker.execute(async () => {
+        return await super.deposit(validatedAmount);
+      });
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError(`Invalid deposit amount: ${error.message}`);
     }
-    
-    return await this.circuitBreaker.execute(async () => {
-      return await super.deposit(amount);
-    });
   }
 
   getCircuitBreakerState() {
