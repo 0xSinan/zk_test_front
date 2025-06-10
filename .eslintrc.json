@@ -1,0 +1,63 @@
+{
+  "root": true,
+  "extends": [
+    "eslint:recommended",
+    "@typescript-eslint/recommended",
+    "plugin:svelte/recommended",
+    "prettier"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "parserOptions": {
+    "sourceType": "module",
+    "ecmaVersion": 2022,
+    "extraFileExtensions": [".svelte"]
+  },
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "overrides": [
+    {
+      "files": ["*.svelte"],
+      "parser": "svelte-eslint-parser",
+      "parserOptions": {
+        "parser": "@typescript-eslint/parser"
+      }
+    },
+    {
+      "files": ["*.test.js", "*.test.ts", "*.spec.js", "*.spec.ts"],
+      "env": {
+        "jest": true,
+        "vitest": true
+      }
+    }
+  ],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/prefer-const": "error",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-debugger": "error",
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "no-alert": "warn",
+    "prefer-const": "error",
+    "no-var": "error",
+    "eqeqeq": ["error", "always"],
+    "curly": ["error", "all"],
+    "no-duplicate-imports": "error",
+    "svelte/no-dom-manipulating": "error",
+    "svelte/no-dupe-else-if-blocks": "error",
+    "svelte/no-dupe-on-directives": "error",
+    "svelte/no-dynamic-slot-name": "error",
+    "svelte/no-unused-svelte-ignore": "error",
+    "svelte/valid-compile": "error"
+  },
+  "globals": {
+    "globalThis": false
+  }
+} 

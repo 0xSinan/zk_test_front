@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "setupDate": "2025-06-10T14:33:29.625Z",
+  "environment": "development",
+  "features": {
+    "zkProofs": false,
+    "analytics": true,
+    "debugging": true
+  }
+}

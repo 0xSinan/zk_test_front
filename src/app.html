@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" %sveltekit.theme%>
+  <head>
+    <meta charset="utf-8" />
+    
+    <!-- Critical polyfills - must be absolutely first -->
+    <script>
+      // Aggressive polyfills to prevent any conflicts
+      (function() {
+        'use strict';
+        
+        // Define global if it doesn't exist
+        if (typeof window.global === 'undefined') {
+          window.global = window;
+        }
+        if (typeof globalThis.global === 'undefined') {
+          globalThis.global = globalThis;
+        }
+        
+        // Define process if it doesn't exist
+        if (typeof window.process === 'undefined') {
+          window.process = { 
+            env: { NODE_ENV: 'development' }, 
+            browser: true,
+            version: 'v18.0.0',
+            platform: 'browser',
+            nextTick: function(fn) { setTimeout(fn, 0); }
+          };
+        }
+        if (typeof globalThis.process === 'undefined') {
+          globalThis.process = window.process;
+        }
+        
+        // Prevent redefinition
+        Object.defineProperty(window, 'global', {
+          value: window,
+          writable: false,
+          configurable: false
+        });
+      })();
+    </script>
+    
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="TradePrivate - Privacy-First Perpetual DEX using Zero-Knowledge Proofs" />
+    <meta name="keywords" content="DeFi, DEX, Privacy, Zero-Knowledge, ZK, Trading, Perpetuals" />
+    <meta name="author" content="TradePrivate" />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#1a1a1a" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="TradePrivate - Privacy-First Perpetual DEX" />
+    <meta property="og:description" content="Trade perpetuals privately using zero-knowledge proofs" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="%sveltekit.assets%/og-image.png" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TradePrivate - Privacy-First Perpetual DEX" />
+    <meta name="twitter:description" content="Trade perpetuals privately using zero-knowledge proofs" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="%sveltekit.assets%/manifest.json" />
+    
+    <!-- Enhanced polyfills script -->
+    <script src="%sveltekit.assets%/polyfills.js"></script>
+    
+    <!-- Security Headers (Note: X-Frame-Options should be set via HTTP headers, not meta tags) -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    
+    <!-- PWA -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Critical CSS -->
+    <style>
+      :root {
+        --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --primary-color: #3b82f6;
+        --secondary-color: #1e293b;
+        --background-color: #0f172a;
+        --surface-color: #1e293b;
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --border-color: #334155;
+        --error-color: #ef4444;
+        --warning-color: #f59e0b;
+        --success-color: #10b981;
+      }
+      
+      * {
+        box-sizing: border-box;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: var(--font-family);
+        background-color: var(--background-color);
+        color: var(--text-primary);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      /* Loading spinner */
+      .loading-spinner {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--border-color);
+        border-top: 3px solid var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: translate(-50%, -50%) rotate(0deg); }
+        100% { transform: translate(-50%, -50%) rotate(360deg); }
+      }
+    </style>
+    
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover" %sveltekit.theme%>
+    <div style="display: contents">
+      <div class="loading-spinner" id="loading-spinner"></div>
+      %sveltekit.body%
+    </div>
+  </body>
+</html> 
