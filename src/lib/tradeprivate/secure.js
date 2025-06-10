@@ -4,6 +4,38 @@ import { InputValidator } from '../utils/validation.js';
 import { TradePrivateMonitoring } from '../utils/monitoring.js';
 import { CONSTANTS } from '../config/constants.js';
 
+/**
+ * Rate Limiter for API calls
+ */
+class RateLimiter {
+  constructor(maxRequests = 10, windowMs = 60000) {
+    this.requests = new Map();
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+  }
+  
+  check(key) {
+    const now = Date.now();
+    const requests = this.requests.get(key) || [];
+    const recentRequests = requests.filter(t => now - t < this.windowMs);
+    
+    if (recentRequests.length >= this.maxRequests) {
+      throw new Error(`Rate limit exceeded: ${recentRequests.length}/${this.maxRequests} requests in ${this.windowMs}ms`);
+    }
+    
+    recentRequests.push(now);
+    this.requests.set(key, recentRequests);
+  }
+
+  clear(key) {
+    this.requests.delete(key);
+  }
+
+  clearAll() {
+    this.requests.clear();
+  }
+}
+
 class CircuitBreaker {
   constructor(options = {}) {
     this.threshold = options.threshold || 5;
@@ -186,6 +218,8 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
     super();
     this.circuitBreaker = new CircuitBreaker();
     this.sessionManager = new SecureSessionManager();
+    this.rateLimiter = new RateLimiter(20, 60000); // 20 requests per minute
+    this.initializeSecurityFeatures();
     
     // Listen for session expiry
     this.sessionManager.onSessionExpired((reason) => {
@@ -329,6 +363,21 @@ export class TradePrivateSDKSecure extends TradePrivateSDK {
   destroy() {
     super.destroy();
     this.sessionManager.destroy();
+  }
+
+  async executeSecureOperation(operation, ...args) {
+    // Check rate limiting
+    this.rateLimiter.check('secure_operation');
+    
+    // Check session validity
+    if (!this.sessionManager.isSessionValid()) {
+      throw new Error('Session expired. Please create a new private account.');
+    }
+
+    // Execute through circuit breaker
+    return await this.circuitBreaker.execute(async () => {
+      return await operation.apply(this, args);
+    });
   }
 }
 

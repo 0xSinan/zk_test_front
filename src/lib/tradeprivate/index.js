@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { getContract, getCurrentAddress } from '../contracts/index.js';
 import { CONSTANTS } from '../config/constants.js';
 import { TradePrivateMonitoring } from '../utils/monitoring.js';
+import { validateOrderParams, validateAmount, validateAddress, ValidationError } from '../crypto/input-validation.js';
 
 export class TradePrivateSDK {
   constructor() {
@@ -51,12 +52,15 @@ export class TradePrivateSDK {
     
     const userAddress = await getCurrentAddress();
     if (!userAddress) {
-      throw new Error('No wallet connected');
+      throw new ValidationError('No wallet connected');
     }
+    
+    // Validate address format
+    validateAddress(userAddress, 'wallet address');
     
     const balance = await this.getPublicBalance(userAddress);
     if (balance === 0n) {
-      throw new Error('Must have balance to create private account');
+      throw new ValidationError('Must have balance to create private account');
     }
 
     return await this.accountManager.createAccount(userAddress);
@@ -67,8 +71,10 @@ export class TradePrivateSDK {
     
     const userAddress = await getCurrentAddress();
     if (!userAddress) {
-      throw new Error('No wallet connected');
+      throw new ValidationError('No wallet connected');
     }
+    
+    validateAddress(userAddress, 'wallet address');
     
     return await this.accountManager.revealAccount(userAddress);
   }
@@ -98,11 +104,27 @@ export class TradePrivateSDK {
   // Trading Operations
   async submitOrder(orderParams) {
     await this.ensureInitialized();
+    
+    // Validate order parameters
+    try {
+      validateOrderParams(orderParams);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError(`Invalid order parameters: ${error.message}`);
+    }
+    
     return await this.orderManager.submitPrivateOrder(orderParams);
   }
 
   async getOrderStatus(nullifier) {
     await this.ensureInitialized();
+    
+    if (!nullifier) {
+      throw new ValidationError('Nullifier is required');
+    }
+    
     return await this.orderManager.getOrderStatus(nullifier);
   }
 
@@ -115,15 +137,20 @@ export class TradePrivateSDK {
   async deposit(amount) {
     await this.ensureInitialized();
     
+    // Validate amount
+    const validatedAmount = validateAmount(amount, 'deposit amount');
+    
     const contract = await getContract('TradePrivate', true);
     const usdcContract = await getContract('USDC', true);
     const userAddress = await getCurrentAddress();
     
     if (!userAddress) {
-      throw new Error('No wallet connected');
+      throw new ValidationError('No wallet connected');
     }
     
-    const parsedAmount = ethers.parseUnits(amount.toString(), 6); // USDC
+    validateAddress(userAddress, 'wallet address');
+    
+    const parsedAmount = ethers.parseUnits(validatedAmount.toString(), 6); // USDC
     
     // Check allowance
     const allowance = await usdcContract.allowance(userAddress, CONSTANTS.CONTRACTS.TRADE_PRIVATE);
@@ -143,7 +170,7 @@ export class TradePrivateSDK {
     const receipt = await tx.wait();
     
     TradePrivateMonitoring.trackUserAction('deposit_success', {
-      amount: amount.toString(),
+      amount: validatedAmount.toString(),
       txHash: tx.hash
     });
     
@@ -153,16 +180,25 @@ export class TradePrivateSDK {
   async withdraw(amount) {
     await this.ensureInitialized();
     
+    // Validate amount
+    const validatedAmount = validateAmount(amount, 'withdrawal amount');
+    
     const userAddress = await getCurrentAddress();
     if (!userAddress) {
-      throw new Error('No wallet connected');
+      throw new ValidationError('No wallet connected');
     }
     
-    return await this.accountManager.withdraw(amount, userAddress);
+    validateAddress(userAddress, 'wallet address');
+    
+    return await this.accountManager.withdraw(validatedAmount, userAddress);
   }
 
   // Utility Methods
   async getPublicBalance(address) {
+    if (address) {
+      validateAddress(address, 'address');
+    }
+    
     const contract = await getContract('TradePrivate');
     return await contract.balances(address || await getCurrentAddress());
   }
@@ -178,6 +214,10 @@ export class TradePrivateSDK {
   }
 
   async getUSDCBalance(address) {
+    if (address) {
+      validateAddress(address, 'address');
+    }
+    
     const usdcContract = await getContract('USDC');
     return await usdcContract.balanceOf(address || await getCurrentAddress());
   }

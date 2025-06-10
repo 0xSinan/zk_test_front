@@ -1,15 +1,21 @@
 # TradePrivate Deployed Contracts
 
-## Contract Addresses
+## Configuration
 
-### Main Contracts (Sepolia Testnet)
+Voici la configuration actuelle pour le réseau **Sepolia** :
+
+- **Chain ID**: `11155111`
+- **RPC**: `https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY_HERE`
+
+## Addresses des Contrats
+
 - **TradePrivate Core**: `0xC7f9bDe6F483205282064219a8aa084fb5a05b97`
 - **ZK Verifier Manager**: `0x2BE2cEB1016Bb5aa15c95032E82b46Fd7C0E595c`
 - **Mock USDC**: `0xAfb77C2408AC6d3704d7476B2002BD7d035cF8D6`
 
 ## Network Information
 - **Chain**: Sepolia Testnet (Chain ID: 11155111)
-- **RPC**: `https://eth-sepolia.g.alchemy.com/v2/vxz68BNmu4mmylbpscUiS_BszkE_TnUz`
+- **RPC**: `https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY_HERE`
 - **Deployed**: Latest deployment
 - **Status**: Active
 
@@ -35,7 +41,7 @@ VITE_CHAIN_ID=11155111
 VITE_TRADE_PRIVATE_ADDRESS=0xC7f9bDe6F483205282064219a8aa084fb5a05b97
 VITE_ZK_VERIFIER_MANAGER_ADDRESS=0x2BE2cEB1016Bb5aa15c95032E82b46Fd7C0E595c
 VITE_USDC_ADDRESS=0xAfb77C2408AC6d3704d7476B2002BD7d035cF8D6
-VITE_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/vxz68BNmu4mmylbpscUiS_BszkE_TnUz
+VITE_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY_HERE
 
 # Development flags
 VITE_DEV_MODE=true

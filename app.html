@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml">
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		
+		<!-- Security Headers -->
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self';">
+		<meta http-equiv="X-Content-Type-Options" content="nosniff">
+		<meta http-equiv="X-Frame-Options" content="DENY">
+		<meta http-equiv="X-XSS-Protection" content="1; mode=block">
+		<meta name="referrer" content="strict-origin-when-cross-origin">
+		
+		<!-- Polyfills for Node.js globals -->
+		<script>
+			// Global polyfills (must be first)
+			if (typeof global === 'undefined') {
+				var global = globalThis;
+			}
+			if (typeof Buffer === 'undefined') {
+				var Buffer = {
+					isBuffer: () => false,
+					from: (data) => new Uint8Array(data),
+					alloc: (size) => new Uint8Array(size)
+				};
+			}
+			if (typeof process === 'undefined') {
+				var process = {
+					env: {},
+					browser: true,
+					version: '',
+					versions: { node: '' }
+				};
+			}
+		</script>
+		
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html> 

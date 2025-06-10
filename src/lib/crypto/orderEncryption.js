@@ -296,15 +296,71 @@ export class OrderEncryption {
    * @param {string} publicKey - Public key (hex string)
    */
   async generateSharedSecret(privateKey, publicKey) {
-    // Mock ECDH implementation for development
-    // In production, use proper elliptic curve cryptography
-    const privateKeyElement = new FieldElement(privateKey);
-    const publicKeyElement = FieldElement.fromString(publicKey);
-    
-    // Simple shared secret derivation
-    const sharedSecret = privateKeyElement.multiply(publicKeyElement);
-    
-    return sharedSecret.value;
+    try {
+      // Attempt to use Web Crypto API for real ECDH
+      const privateKeyBuffer = this.bigintToBytes(privateKey, 32);
+      
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        privateKeyBuffer,
+        {
+          name: 'ECDH',
+          namedCurve: 'P-256'
+        },
+        false,
+        ['deriveKey']
+      );
+      
+      const publicKeyBuffer = this.hexToBytes(publicKey);
+      const publicCryptoKey = await crypto.subtle.importKey(
+        'raw',
+        publicKeyBuffer,
+        {
+          name: 'ECDH',
+          namedCurve: 'P-256'
+        },
+        false,
+        []
+      );
+      
+      const sharedSecret = await crypto.subtle.deriveKey(
+        {
+          name: 'ECDH',
+          public: publicCryptoKey
+        },
+        cryptoKey,
+        {
+          name: 'AES-GCM',
+          length: 256
+        },
+        true,
+        ['encrypt', 'decrypt']
+      );
+      
+      const exported = await crypto.subtle.exportKey('raw', sharedSecret);
+      return new Uint8Array(exported);
+      
+    } catch (error) {
+      console.warn('🚨 SECURITY WARNING: Using fallback ECDH - NOT SECURE FOR PRODUCTION');
+      console.warn('Error:', error.message);
+      
+      // Fallback for development/testing ONLY
+      // This is NOT cryptographically secure
+      const privateKeyElement = new FieldElement(privateKey);
+      const publicKeyElement = FieldElement.fromString(publicKey);
+      
+      const sharedSecret = privateKeyElement.multiply(publicKeyElement);
+      return this.bigintToBytes(sharedSecret.value, 32);
+    }
+  }
+
+  hexToBytes(hex) {
+    const cleanHex = hex.replace('0x', '');
+    const bytes = new Uint8Array(cleanHex.length / 2);
+    for (let i = 0; i < cleanHex.length; i += 2) {
+      bytes[i / 2] = parseInt(cleanHex.slice(i, i + 2), 16);
+    }
+    return bytes;
   }
 
   /**

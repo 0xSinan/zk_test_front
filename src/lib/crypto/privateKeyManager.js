@@ -1,36 +1,249 @@
 import { FieldElement } from './fieldElement.js';
 import { CONSTANTS } from '../config/constants.js';
+import { HDWallet, getHDWallet } from './hdKeyDerivation.js';
 
 /**
- * Private Key Manager for TradePrivate
- * Handles generation, storage, and management of private keys
+ * Enhanced Private Key Manager with HD Wallet support
+ * Now supports BIP32/BIP44 hierarchical deterministic key derivation
  */
 export class PrivateKeyManager {
   constructor() {
     this.privateKey = null;
     this.tradingPublicKey = null;
     this.encryptionKeys = null;
+    this.hdWallet = getHDWallet();
+    this.accountIndex = 0;
+    this.isHDMode = false;
   }
 
   async initialize() {
-    // Try to load existing keys
-    const existing = await this.loadFromSecureStorage();
+    console.log('🔑 Initializing Private Key Manager...');
     
-    if (!existing) {
-      // Generate new keys if none exist
-      await this.generateNewKeys();
-    } else {
-      this.privateKey = existing.privateKey;
-      this.tradingPublicKey = existing.tradingPublicKey;
-      this.encryptionKeys = existing.encryptionKeys;
+    // Try to load existing HD wallet first
+    const hdLoaded = await this.tryLoadHDWallet();
+    
+    if (hdLoaded) {
+      console.log('✅ HD wallet loaded successfully');
+      return;
     }
     
-    // Validate loaded keys
+    // Try to load legacy keys
+    const legacyLoaded = await this.loadFromSecureStorage();
+    
+    if (!legacyLoaded) {
+      // No existing keys - will generate new HD wallet when needed
+      console.log('💡 No existing keys found. Ready to generate HD wallet.');
+      return;
+    }
+    
+    // Legacy keys loaded
+    console.log('⚠️ Legacy keys loaded. Consider migrating to HD wallet.');
     this.validateKeys();
   }
 
+  /**
+   * Generate new HD wallet with mnemonic phrase
+   */
+  async generateHDWallet(password) {
+    console.log('🆕 Generating new HD wallet...');
+    
+    try {
+      // Generate HD wallet
+      const { mnemonic, seedHash } = await this.hdWallet.generateFromEntropy();
+      
+      // Derive first account
+      await this.hdWallet.deriveAccount(0);
+      
+      // Get trading keys for this account
+      const tradingKeys = this.hdWallet.getTradingKeys(0);
+      
+      // Set current keys
+      this.privateKey = tradingKeys.privateKey;
+      this.tradingPublicKey = tradingKeys.publicKey;
+      this.accountIndex = 0;
+      this.isHDMode = true;
+      
+      // Generate encryption keys
+      this.encryptionKeys = await this.generateEncryptionKeys();
+      
+      // Save HD wallet with password
+      await this.hdWallet.saveToStorage(password);
+      
+      // Save metadata
+      await this.saveHDMetadata();
+      
+      console.log('✅ HD wallet generated successfully');
+      
+      return {
+        mnemonic,
+        seedHash,
+        account: {
+          index: 0,
+          address: tradingKeys.address,
+          path: tradingKeys.path
+        }
+      };
+    } catch (error) {
+      console.error('Failed to generate HD wallet:', error);
+      throw new Error(`HD wallet generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Restore HD wallet from mnemonic phrase
+   */
+  async restoreHDWallet(mnemonic, password, accountIndex = 0) {
+    console.log('🔄 Restoring HD wallet from mnemonic...');
+    
+    try {
+      // Restore from mnemonic
+      await this.hdWallet.restoreFromMnemonic(mnemonic);
+      
+      // Derive specified account
+      await this.hdWallet.deriveAccount(accountIndex);
+      
+      // Get trading keys
+      const tradingKeys = this.hdWallet.getTradingKeys(accountIndex);
+      
+      // Set current keys
+      this.privateKey = tradingKeys.privateKey;
+      this.tradingPublicKey = tradingKeys.publicKey;
+      this.accountIndex = accountIndex;
+      this.isHDMode = true;
+      
+      // Generate encryption keys
+      this.encryptionKeys = await this.generateEncryptionKeys();
+      
+      // Save HD wallet with password
+      await this.hdWallet.saveToStorage(password);
+      
+      // Save metadata
+      await this.saveHDMetadata();
+      
+      console.log('✅ HD wallet restored successfully');
+      
+      return {
+        account: {
+          index: accountIndex,
+          address: tradingKeys.address,
+          path: tradingKeys.path
+        },
+        seedHash: await this.hdWallet.getSeedHash()
+      };
+    } catch (error) {
+      console.error('Failed to restore HD wallet:', error);
+      throw new Error(`HD wallet restoration failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Switch to different account in HD wallet
+   */
+  async switchAccount(accountIndex, password) {
+    if (!this.isHDMode) {
+      throw new Error('Not in HD mode. Cannot switch accounts.');
+    }
+    
+    console.log(`🔄 Switching to account ${accountIndex}...`);
+    
+    // Load HD wallet if not already loaded
+    if (!this.hdWallet.initialized) {
+      const loaded = await this.hdWallet.loadFromStorage(password);
+      if (!loaded) {
+        throw new Error('Failed to load HD wallet');
+      }
+    }
+    
+    // Derive account if not already derived
+    let account = this.hdWallet.accounts.get(accountIndex);
+    if (!account) {
+      await this.hdWallet.deriveAccount(accountIndex);
+    }
+    
+    // Get trading keys
+    const tradingKeys = this.hdWallet.getTradingKeys(accountIndex);
+    
+    // Update current keys
+    this.privateKey = tradingKeys.privateKey;
+    this.tradingPublicKey = tradingKeys.publicKey;
+    this.accountIndex = accountIndex;
+    
+    // Update metadata
+    await this.saveHDMetadata();
+    
+    console.log(`✅ Switched to account ${accountIndex}`);
+    
+    return {
+      index: accountIndex,
+      address: tradingKeys.address,
+      path: tradingKeys.path
+    };
+  }
+
+  /**
+   * Get all derived accounts
+   */
+  getAllAccounts() {
+    if (!this.isHDMode) {
+      return [];
+    }
+    
+    const accounts = [];
+    for (const [index, account] of this.hdWallet.accounts) {
+      const tradingKeys = this.hdWallet.getTradingKeys(index);
+      accounts.push({
+        index,
+        address: tradingKeys.address,
+        path: tradingKeys.path,
+        isCurrent: index === this.accountIndex
+      });
+    }
+    
+    return accounts;
+  }
+
+  /**
+   * Generate multiple accounts for the HD wallet
+   */
+  async generateAccounts(count = 5, password) {
+    if (!this.isHDMode) {
+      throw new Error('Not in HD mode');
+    }
+    
+    console.log(`🔑 Generating ${count} accounts...`);
+    
+    // Ensure HD wallet is loaded
+    if (!this.hdWallet.initialized) {
+      const loaded = await this.hdWallet.loadFromStorage(password);
+      if (!loaded) {
+        throw new Error('Failed to load HD wallet');
+      }
+    }
+    
+    const accounts = [];
+    
+    for (let i = 0; i < count; i++) {
+      if (!this.hdWallet.accounts.has(i)) {
+        await this.hdWallet.deriveAccount(i);
+      }
+      
+      const tradingKeys = this.hdWallet.getTradingKeys(i);
+      accounts.push({
+        index: i,
+        address: tradingKeys.address,
+        path: tradingKeys.path
+      });
+    }
+    
+    console.log(`✅ ${count} accounts ready`);
+    return accounts;
+  }
+
+  /**
+   * Legacy method: Generate single keys (deprecated)
+   */
   async generateNewKeys() {
-    console.log('Generating new private keys...');
+    console.log('⚠️ Generating legacy keys (deprecated - use HD wallet instead)');
     
     // Generate main private key (32 bytes)
     const keyBytes = new Uint8Array(32);
@@ -50,7 +263,125 @@ export class PrivateKeyManager {
     // Save to secure storage
     await this.saveToSecureStorage();
     
-    console.log('Private keys generated and saved');
+    this.isHDMode = false;
+    
+    console.log('✅ Legacy keys generated and saved');
+  }
+
+  /**
+   * Try to load HD wallet from storage
+   */
+  async tryLoadHDWallet() {
+    try {
+      const { openDB } = await import('idb');
+      const db = await openDB('TradePrivateHD', 1);
+      
+      if (!db.objectStoreNames.contains('wallet')) {
+        return false;
+      }
+      
+      const metadata = await db.get('wallet', 'metadata');
+      if (!metadata) {
+        return false;
+      }
+      
+      console.log('📋 HD wallet metadata found');
+      
+      // Set mode
+      this.isHDMode = metadata.isHDMode;
+      this.accountIndex = metadata.accountIndex || 0;
+      
+      return true;
+    } catch (error) {
+      console.log('No HD wallet metadata found');
+      return false;
+    }
+  }
+
+  /**
+   * Save HD wallet metadata
+   */
+  async saveHDMetadata() {
+    const { openDB } = await import('idb');
+    const db = await openDB('TradePrivateHD', 1, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('wallet')) {
+          db.createObjectStore('wallet');
+        }
+      }
+    });
+    
+    const metadata = {
+      isHDMode: this.isHDMode,
+      accountIndex: this.accountIndex,
+      timestamp: Date.now(),
+      version: '1.0'
+    };
+    
+    await db.put('wallet', metadata, 'metadata');
+  }
+
+  /**
+   * Migrate from legacy keys to HD wallet
+   */
+  async migrateToHD(password) {
+    if (this.isHDMode) {
+      throw new Error('Already using HD wallet');
+    }
+    
+    if (!this.privateKey) {
+      throw new Error('No legacy keys to migrate');
+    }
+    
+    console.log('🔄 Migrating to HD wallet...');
+    
+    // Backup current keys
+    const legacyPrivateKey = this.privateKey;
+    const legacyPublicKey = this.tradingPublicKey;
+    
+    try {
+      // Generate new HD wallet
+      const hdResult = await this.generateHDWallet(password);
+      
+      console.log('⚠️ Migration complete. Legacy keys backed up.');
+      console.log('🔑 New HD wallet mnemonic (SAVE THIS):');
+      console.log(hdResult.mnemonic);
+      
+      return {
+        ...hdResult,
+        migrated: true,
+        legacyBackup: {
+          privateKey: legacyPrivateKey.toHex(),
+          publicKey: legacyPublicKey
+        }
+      };
+    } catch (error) {
+      // Restore legacy keys on failure
+      this.privateKey = legacyPrivateKey;
+      this.tradingPublicKey = legacyPublicKey;
+      this.isHDMode = false;
+      
+      throw new Error(`Migration failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get wallet status and information
+   */
+  getWalletInfo() {
+    const info = {
+      isHDMode: this.isHDMode,
+      hasKeys: !!this.privateKey,
+      initialized: this.hdWallet?.initialized || false
+    };
+    
+    if (this.isHDMode) {
+      info.currentAccount = this.accountIndex;
+      info.totalAccounts = this.hdWallet.accounts.size;
+      info.accounts = this.getAllAccounts();
+    }
+    
+    return info;
   }
 
   async derivePublicKey(privateKey) {
@@ -107,6 +438,11 @@ export class PrivateKeyManager {
   }
 
   async saveToSecureStorage() {
+    if (this.isHDMode) {
+      // HD mode uses different storage
+      return;
+    }
+    
     const data = {
       privateKey: this.privateKey.toHex(),
       tradingPublicKey: this.tradingPublicKey,
@@ -114,12 +450,13 @@ export class PrivateKeyManager {
         publicKeyHex: this.encryptionKeys.publicKeyHex
       },
       createdAt: Date.now(),
-      version: '1.0'
+      version: '1.0',
+      type: 'legacy'
     };
 
     if (typeof window !== 'undefined') {
       try {
-        // Use IndexedDB for more secure storage
+        // ONLY use IndexedDB for secure storage - NEVER sessionStorage for private keys
         const { openDB } = await import('idb');
         const db = await openDB('TradePrivateKeys', 1, {
           upgrade(db) {
@@ -129,12 +466,13 @@ export class PrivateKeyManager {
           }
         });
         
-        await db.put('keys', data, 'main');
-        console.log('Keys saved to IndexedDB');
+        // Encrypt data before storage
+        const encryptedData = await this.encryptForStorage(data);
+        await db.put('keys', encryptedData, 'main');
+        console.log('Keys saved securely to IndexedDB');
       } catch (error) {
         console.error('Failed to save to IndexedDB:', error);
-        // Fallback to sessionStorage (less secure)
-        sessionStorage.setItem(CONSTANTS.STORAGE_KEYS.ACCOUNT_DATA, JSON.stringify(data));
+        throw new Error('Cannot securely store private keys. Private key storage failed.');
       }
     }
   }
@@ -143,36 +481,103 @@ export class PrivateKeyManager {
     if (typeof window === 'undefined') return null;
 
     try {
-      // Try IndexedDB first
+      // ONLY load from IndexedDB - no fallback to sessionStorage
       const { openDB } = await import('idb');
       const db = await openDB('TradePrivateKeys', 1);
       
       if (db.objectStoreNames.contains('keys')) {
-        const data = await db.get('keys', 'main');
-        if (data) {
-          return {
-            privateKey: FieldElement.fromHex(data.privateKey),
-            tradingPublicKey: data.tradingPublicKey,
-            encryptionKeys: data.encryptionKeys
-          };
+        const encryptedData = await db.get('keys', 'main');
+        if (encryptedData) {
+          const data = await this.decryptFromStorage(encryptedData);
+          
+          // Check if this is legacy data
+          if (data.type === 'legacy' || !data.type) {
+            this.privateKey = FieldElement.fromHex(data.privateKey);
+            this.tradingPublicKey = data.tradingPublicKey;
+            this.encryptionKeys = data.encryptionKeys;
+            this.isHDMode = false;
+            return true;
+          }
         }
       }
     } catch (error) {
       console.error('Failed to load from IndexedDB:', error);
+      throw new Error('Failed to load private keys securely');
     }
 
-    // Fallback to sessionStorage
-    const stored = sessionStorage.getItem(CONSTANTS.STORAGE_KEYS.ACCOUNT_DATA);
-    if (stored) {
-      const data = JSON.parse(stored);
-      return {
-        privateKey: FieldElement.fromHex(data.privateKey),
-        tradingPublicKey: data.tradingPublicKey,
-        encryptionKeys: data.encryptionKeys
-      };
-    }
+    return false;
+  }
 
-    return null;
+  async encryptForStorage(data) {
+    // Derive encryption key from browser's crypto API
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(navigator.userAgent + Date.now()),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encodedData = new TextEncoder().encode(JSON.stringify(data));
+    
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      encodedData
+    );
+
+    return {
+      encrypted: Array.from(new Uint8Array(encrypted)),
+      iv: Array.from(iv),
+      salt: Array.from(salt)
+    };
+  }
+
+  async decryptFromStorage(encryptedData) {
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(navigator.userAgent + Date.now()),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: new Uint8Array(encryptedData.salt),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(encryptedData.iv) },
+      key,
+      new Uint8Array(encryptedData.encrypted)
+    );
+
+    const jsonString = new TextDecoder().decode(decrypted);
+    return JSON.parse(jsonString);
   }
 
   validateKeys() {
@@ -228,11 +633,13 @@ export class PrivateKeyManager {
     this.privateKey = null;
     this.tradingPublicKey = null;
     this.encryptionKeys = null;
+    this.accountIndex = 0;
+    this.isHDMode = false;
     
-    // Clear from storage
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem(CONSTANTS.STORAGE_KEYS.ACCOUNT_DATA);
-    }
+    // Clear HD wallet
+    this.hdWallet.destroy();
+    
+    console.log('🧹 Private key manager cleared');
   }
 
   // Static helper methods

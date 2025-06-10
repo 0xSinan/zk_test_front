@@ -86,19 +86,19 @@ export class FieldElement {
   }
 
   pow(exponent) {
-    let result = new FieldElement(1n);
-    let base = new FieldElement(this.value);
+    let result = 1n;
+    let base = this.value;
     let exp = BigInt(exponent);
     
     while (exp > 0n) {
-      if (exp % 2n === 1n) {
-        result = result.mul(base);
+      if (exp & 1n) {
+        result = (result * base) % ZK_CONFIG.FIELD_SIZE;
       }
-      base = base.mul(base);
-      exp = exp / 2n;
+      base = (base * base) % ZK_CONFIG.FIELD_SIZE;
+      exp >>= 1n;
     }
     
-    return result;
+    return new FieldElement(result);
   }
 
   inv() {
@@ -199,8 +199,12 @@ export function fromFieldElement(fieldElement, format = 'bigint') {
 export function validateFieldElement(value) {
   const fieldElement = typeof value === 'bigint' ? value : toFieldElement(value);
   
-  if (fieldElement < 0n || fieldElement >= ZK_CONFIG.FIELD_SIZE) {
-    throw new Error(`Value ${fieldElement} is not a valid field element`);
+  if (fieldElement >= ZK_CONFIG.FIELD_SIZE) {
+    throw new Error(`Field element too large: ${fieldElement} >= ${ZK_CONFIG.FIELD_SIZE}`);
+  }
+  
+  if (fieldElement < 0n) {
+    throw new Error('Field element cannot be negative');
   }
   
   return true;
